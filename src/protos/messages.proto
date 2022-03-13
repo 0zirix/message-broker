@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+message Publish {
+    string queue = 1;
+    int32 priority = 2;
+    string payload = 3;
+}
+
+message Subscribe {
+    string queue = 1;
+}
+
+message Produce {
+    string queue = 1;
+    int32 priority = 2;
+    string payload = 3;
+}
+
+message Consume {
+    string queue = 1;
+    string payload = 2;
+}
+
+message Packet {
+    oneof payload {
+        Publish publish = 1;
+        Subscribe subscribe = 2;
+        Produce produce = 3;
+        Consume consume = 4;
+    }
+}

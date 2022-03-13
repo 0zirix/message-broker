@@ -1,0 +1,29 @@
+{
+  "name": "message-broker",
+  "version": "1.0.0",
+  "description": "Another message queue manager.",
+  "main": "src/index.js",
+  "scripts": {
+    "server": "node src/index.js server",
+    "client": "node src/index.js client",
+    "test": "npm run test"
+  },
+  "keywords": [
+    "message",
+    "broker",
+    "queue"
+  ],
+  "author": "mel.florance@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "ejs": "^3.1.6",
+    "express": "^4.17.3",
+    "heapify": "^0.6.0",
+    "protobufjs": "^6.11.2",
+    "redis": "^4.0.4",
+    "redis-om": "^0.2.0",
+    "socket.io": "^4.4.1",
+    "winston": "^3.6.0"
+  }
+}

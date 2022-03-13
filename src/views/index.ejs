@@ -1,0 +1,196 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+
+    <title>Message Broker</title>
+
+    <link href="//cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <script src="//cdn.jsdelivr.net/npm/vue@2.6.0"></script>
+    <script src="//cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+        crossorigin="anonymous"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"
+        integrity="sha512-iqRVtNB+t9O+epcgUTIPF+nklypcR23H1yR1NFM9kffn6/iBhZ9bTB6oKLaGMv8JE9UgjcwfBFg/eHC/VMws+g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        html,
+        body {
+            background: rgba(0, 0, 0, .1)
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" class="container-fluid">
+        <div class="row">
+            <div class="col-md-3">
+                <span class="fs-5 fw-semibold">Publishers</span>
+            </div>
+            <div class="col-md-6">
+                <span class="fs-5 fw-semibold">Queues</span>
+                <div class="list-group list-group-flush border-bottom scrollarea" v-for="queue in queues">
+                    <a href="#" class="list-group-item list-group-item-action py-3 lh-tight">
+                        <div class="d-flex w-100 align-items-center justify-content-between">
+                            <strong class="mb-1">{{queue.name}}</strong>
+                            <small>
+                                <span class="link-primary" @click="purge_queue(queue.id)">Purge</span>
+                                <span class="link-danger" @click="remove_queue(queue.id)">Remove</span>
+                                <span>{{queue.size}} / {{queue.capacity}} {{bytes_to_human(queue.memory)}}</span>
+                            </small>
+                        </div>
+                    </a>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <span class="fs-5 fw-semibold">Subscribers</span>
+            </div>
+            <div class="col-md-4">
+                <fieldset>
+                    <legend>Create queue</legend>
+                    <form>
+                        <div class="mb-3">
+                            <label for="queue_name" class="form-label">Queue Name</label>
+                            <input type="text" class="form-control" id="queue_name" v-model="queue.name">
+                        </div>
+                        <button type="submit" class="btn btn-primary" @submit.prevent="create_queue"
+                            @click.prevent="create_queue">Create</button>
+                    </form>
+                </fieldset>
+            </div>
+            <div class="col-md-4">
+                <fieldset>
+                    <legend>Create message</legend>
+                    <form>
+                        <div class="mb-3">
+                            <select class="form-control" v-model="message.queue">
+                                <option v-for="queue in queues" :value="queue.name">{{queue.name}}</option>
+                            </select>
+                            <select class="form-control" v-model="message.type">
+                                <option v-for="type in message_types" :value="type">{{type}}</option>
+                            </select>
+                            <input type="number" v-model="message.priority" value="1" class="form-control">
+                            <textarea id="message_text" class="form-control" rows="5" placeholder="Message..."
+                                v-model="message.text"></textarea>
+                            <input type="number" v-model="message.multiplier" value="1" class="form-control">
+                        </div>
+                        <button type="submit" class="btn btn-primary" @submit.prevent="create_message"
+                            @click.prevent="create_message">Create</button>
+                    </form>
+                </fieldset>
+            </div>
+        </div>
+    </div>
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    queue: {
+                        name: ''
+                    },
+                    message_types: [
+                        'publish',
+                        'produce'
+                    ],
+                    message: {
+                        type: 'publish',
+                        queue: null,
+                        multiplier: 1,
+                        priority: 1,
+                        text: 'test'
+                    },
+                    socket: null,
+                    connected: false,
+                    queues: []
+                }
+            },
+            async mounted() {
+                this.socket = io('http://localhost:1026');
+
+                this.socket.on('connect', () => {
+                    this.connected = true;
+                    this.socket.emit('get:queue');
+                    console.log('connected');
+                });
+
+                this.socket.on('queue:list', list => {
+                    if (this.queues.length === 0)
+                        this.message.queue = list[0].name;
+
+                    this.queues = list;
+                });
+
+                this.socket.on('queue:stats', stats => {
+                    for (let stat of stats) {
+                        let index = this.queues.findIndex(q => q.id === stat.id);
+
+                        if (index >= 0) {
+                            this.$set(this.queues, index, {
+                                id: stat.id,
+                                size: stat.size,
+                                memory: stat.memory,
+                                name: this.queues[index].name,
+                                index: this.queues[index].index,
+                                capacity: this.queues[index].capacity
+                            });
+                        }
+                    }
+                });
+            },
+            methods: {
+                // Queues
+                create_queue() {
+                    if (this.connected && this.queue.name.length > 0) {
+                        this.socket.emit('create:queue', this.queue);
+                        this.reset_queue_form();
+                    }
+                },
+                purge_queue(id) {
+                    if (this.connected && typeof id != 'undefined') {
+                        this.socket.emit('purge:queue', id);
+                    }
+                },
+                remove_queue(id) {
+                    if (this.connected && typeof id != 'undefined') {
+                        this.socket.emit('delete:queue', id);
+                    }
+                },
+                reset_queue_form() {
+                    this.queue = {
+                        name: ''
+                    };
+                },
+
+                // Messages
+                create_message() {
+                    if (this.connected
+                        && this.message.text.length > 0
+                        && this.message.queue !== null) {
+                        this.socket.emit('create:message', this.message);
+                        // this.reset_message_form();
+                    }
+                },
+                reset_message_form() {
+                    this.message = {
+                        queue: null,
+                        multiplier: 1,
+                        priority: 1,
+                        text: 'test'
+                    };
+                },
+
+                // Helper methods
+                bytes_to_human(bytes) {
+                    if (bytes < 1024) return bytes + ' bytes';
+                    else if (bytes < 1048576) return (bytes / 1024).toFixed(3) + ' KiB';
+                    else if (bytes < 1073741824) return (bytes / 1048576).toFixed(3) + ' MiB';
+                    else return (bytes / 1073741824).toFixed(3) + ' GiB';
+                }
+            }
+        })
+    </script>
+</body>
+
+</html>

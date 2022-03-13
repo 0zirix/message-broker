@@ -1,0 +1,19 @@
+version: '3.9'
+networks:
+  internal:
+services:
+  broker:
+    build: .
+    ports:
+      - 1025:1025 # broker protocol
+      - 1026:1026 # web interface
+    volumes:
+      - ./:/app
+    networks:
+      - internal
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+    networks:
+      - internal
