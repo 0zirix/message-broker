@@ -140,16 +140,16 @@ module.exports = class Server {
 
             let sockets = this.subscribers[queue];
 
+            let packet = this.message_manager.create_publish_packet(
+                queue,
+                decoded.publish.priority,
+                decoded.publish.payload
+            );
+
             for (let i = 0; i < sockets.length; ++i) {
                 let client = this.socket_manager.get_socket_by_id(sockets[i]);
 
                 if (client) {
-                    let packet = this.message_manager.create_publish_packet(
-                        queue,
-                        decoded.publish.priority,
-                        decoded.publish.payload
-                    );
-
                     client.write(packet);
                     await Helper.sleep(this.options.publish_interval);
                 }
