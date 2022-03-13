@@ -76,7 +76,6 @@ module.exports = class Client {
                 this.connected = true;
 
                 resolve(this);
-
             });
 
             this.socket.on('close', error => {
