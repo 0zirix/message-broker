@@ -224,6 +224,10 @@ module.exports = class Client extends EventEmitter {
         return await this.request(MessageManager.types.CREATE_QUEUE, { name, capacity });
     }
 
+    async purge_queue(name) {
+        return await this.request(MessageManager.types.PURGE_QUEUE, { name });
+    }
+
     async delete_queue(name) {
         return await this.request(MessageManager.types.DELETE_QUEUE, { name });
     }

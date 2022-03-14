@@ -41,7 +41,7 @@ module.exports = class Server {
         return new Promise(async (resolve, reject) => {
             if (!this.instance) {
                 this.instance = net.createServer();
-            
+
                 await this.message_manager.load_protocol();
                 await this.storage_manager.connect();
                 await this.queue_manager.load_queues();
@@ -86,7 +86,7 @@ module.exports = class Server {
     }
 
     handle_listening() {
-    
+
         this.logger.info('Listening for connections...');
     }
 
@@ -112,7 +112,7 @@ module.exports = class Server {
                     'request',
                     'acknowledge'
                 ];
-    
+
                 if (accepted.indexOf(decoded.payload) >= 0) {
                     try {
                         await this['handle_' + decoded.payload](chunk, decoded, socket);
@@ -235,12 +235,32 @@ module.exports = class Server {
                         if (typeof params.name != 'undefined') {
                             if (!this.queue_manager.queue_exists(params.name)) {
                                 const queue = await this.queue_manager.create_queue(params.name, capacity);
-                                this.logger.info('Created queue: %s with id %s',  queue.name, queue.id);
+                                this.logger.info('Created queue: %s with id %s', queue.name, queue.id);
+                                // TODO: send client response packet
                             }
                         }
                     }
                     catch (error) {
-                        console.log('Request packet, cannot create queue', error);
+                        console.log('Request packet error: cannot create queue', error);
+                    }
+                }
+                break;
+            }
+            case MessageManager.types.PURGE_QUEUE: {
+                if (typeof decoded.request.payload != 'undefined') {
+                    try {
+                        const params = JSON.parse(decoded.request.payload);
+
+                        if (typeof params.name != 'undefined') {
+                            if (this.queue_manager.queue_exists(params.name)) {
+                                const count = await this.queue_manager.purge_queue_by_name(params.name);
+                                this.logger.info('Purged %d in queue %s', count, params.name);
+                                // TODO: send client response packet
+                            }
+                        }
+                    }
+                    catch (error) {
+                        console.log('Request packet error: cannot purge queue', error);
                     }
                 }
                 break;

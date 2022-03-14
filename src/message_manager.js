@@ -4,7 +4,8 @@ const protobuf = require("protobufjs");
 module.exports = class MessageManager {
     static types = {
         CREATE_QUEUE: 0,
-        DELETE_QUEUE: 1
+        PURGE_QUEUE: 1,
+        DELETE_QUEUE: 2
     };
 
     constructor(logger, queue_manager, options = {}) {

@@ -93,6 +93,7 @@ module.exports = class QueueManager {
                 this.messages[message.id] = message;
                 this.queues[queue].memory += Helper.size_of(message);
                 this.metrics[queue].messages_per_sec_in++;
+
                 return true;
             }
         }
@@ -148,6 +149,17 @@ module.exports = class QueueManager {
         }
 
         return null;
+    }
+
+    purge_queue_by_name(name) {
+        if (typeof this.queues[name] != 'undefined') {
+            let size = this.queues[name].size();
+            this.queues[name].clear();
+            this.queues[name].memory = 0;
+            return size;
+        }
+
+        return false;
     }
 
     purge_queue_by_id(id) {

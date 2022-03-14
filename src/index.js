@@ -15,6 +15,7 @@ require('dotenv').config();
             client.on('ready', async () => {
                 // await client.create_queue('omgitworks');
                 // await client.delete_queue('test');
+                await client.purge_queue('test')
 
                 client.subscribe('todo', message => {
                     console.log(message);
