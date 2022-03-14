@@ -114,10 +114,11 @@ module.exports = class UIManager {
                     case 'publish': {
                         if (typeof payload.multiplier != 'undefined') {
                             let max = parseInt(payload.multiplier);
+                            let message = this.broker.message_manager.create_publish_packet(payload.queue, payload.priority, payload.text);
 
                             for (let i = 0; i < max; ++i) {
                                 try {
-                                    await this.broker.handle_publish({
+                                    await this.broker.handle_publish(message, {
                                         publish: {
                                             queue: payload.queue,
                                             priority: payload.priority,
@@ -136,10 +137,11 @@ module.exports = class UIManager {
                     case 'produce': {
                         if (typeof payload.multiplier != 'undefined') {
                             let max = parseInt(payload.multiplier);
+                            let message = this.broker.message_manager.create_produce_packet(payload.queue, payload.priority, payload.text);
 
                             for (let i = 0; i < max; ++i) {
                                 try {
-                                    await this.broker.handle_produce({
+                                    await this.broker.handle_produce(message, {
                                         produce: {
                                             queue: payload.queue,
                                             priority: payload.priority,

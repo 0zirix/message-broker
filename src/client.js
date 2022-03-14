@@ -1,10 +1,12 @@
 const net = require('net');
+const EventEmitter = require('events');
 
 const Logger = require('./logger');
 const MessageManager = require('./message_manager');
 
-module.exports = class Client {
+module.exports = class Client extends EventEmitter {
     constructor(options = {}) {
+        super();
         this.options = {
             logging: options.logging || process.env.LOGGING || true,
             port: options.port || process.env.PORT || 1025,
@@ -15,20 +17,20 @@ module.exports = class Client {
         this.message_manager = new MessageManager();
         this.socket = null;
         this.connected = false;
+        this.connecting = false;
 
         this.callbacks = {};
     }
 
-    connect() {
-        return new Promise(async (resolve, reject) => {
-            await this.message_manager.load_protocol();
+    async connect() {
+        await this.message_manager.load_protocol();
+        this.socket = net.connect(this.options);
 
-            this.socket = net.connect(this.options);
+        this.socket.on('data', async data => {
+            try {
+                let packet = await this.message_manager.receive(data);
 
-            this.socket.on('data', async data => {
-                try {
-                    let packet = await this.message_manager.decode(data);
-
+                if (packet) {
                     switch (packet.payload) {
                         case 'publish': {
                             if (typeof this.callbacks[packet.publish.queue] != 'undefined') {
@@ -41,7 +43,9 @@ module.exports = class Client {
                             break;
                         }
                         case 'subscribe': {
-                            console.log(packet.subscribe.queue)
+                            break;
+                        }
+                        case 'produce': {
                             break;
                         }
                         case 'consume': {
@@ -55,49 +59,68 @@ module.exports = class Client {
                             }
                             break;
                         }
+                        case 'request': {
+                            break;
+                        }
+                        case 'response': {
+                            break;
+                        }
+                        case 'acknowledge': {
+                            break;
+                        }
                     }
                 }
-                catch (e) {
-                    console.log('Unable to decode packet')
-                }
-            });
+            }
+            catch (e) {
+                console.log('Unable to decode packet')
+            }
+        });
 
-            this.socket.on('error', error => {
-                if (this.options.logging)
-                    this.logger.error(error);
+        this.socket.on('error', error => {
+            if (this.options.logging)
+                this.logger.error(error);
 
-                reject(error);
-            });
+            this.emit('error', error);
+        });
 
-            this.socket.on('connect', () => {
-                if (this.options.logging)
-                    this.logger.info('Connected')
+        this.socket.on('ready', () => {
+            if (this.options.logging)
+                this.logger.info('Connected');
 
-                this.connected = true;
+            this.connected = true;
+            this.connecting = false;
 
-                resolve(this);
-            });
+            this.emit('ready');
+        });
 
-            this.socket.on('close', error => {
-                this.socket.destroy();
-                this.socket = null;
-                this.connected = false;
+        this.socket.on('connect', () => {
+            if (this.options.logging)
+                this.logger.info('Connecting...')
 
-                if (error && this.options.logging)
-                    this.logger.error(error);
-            });
+            this.connecting = true;
+
+            this.emit('connect');
+        });
+
+        this.socket.on('close', error => {
+            this.socket.destroy();
+            this.socket = null;
+            this.connected = false;
+            this.connecting = false;
+
+            this.emit('disconnect');
+
+            if (error && this.options.logging)
+                this.logger.error(error);
         });
     }
 
     disconnect() {
-        return new Promise((resolve, reject) => {
-            this.socket.destroy();
+        this.socket.destroy();
+        this.emit('disconnect');
 
-            if (this.options.logging)
-                this.logger.info('Disconnected')
-
-            resolve();
-        });
+        if (this.options.logging)
+            this.logger.info('Disconnected')
     }
 
     send(payload) {
@@ -116,10 +139,12 @@ module.exports = class Client {
         if (!this.connected)
             return;
 
-        let packet = this.message_manager.create_publish_packet(queue, priority, payload);
-
         try {
-            await this.send(packet);
+            await this.send(this.message_manager.create_publish_packet(
+                queue,
+                priority,
+                payload
+            ));
 
             if (this.options.logging)
                 this.logger.info('Published message: %s with priority %d', payload, priority);
@@ -133,11 +158,9 @@ module.exports = class Client {
         if (!this.connected)
             return;
 
-        this.callbacks[queue] = callback;
-        let packet = this.message_manager.create_subscribe_packet(queue);
-
         try {
-            await this.send(packet);
+            this.callbacks[queue] = callback;
+            await this.send(this.message_manager.create_subscribe_packet(queue));
 
             if (this.options.logging)
                 this.logger.info('Subscribed to queue: %s', queue);
@@ -151,10 +174,12 @@ module.exports = class Client {
         if (!this.connected)
             return;
 
-        let packet = this.message_manager.create_produce_packet(queue, priority, payload);
-
         try {
-            await this.send(packet);
+            await this.send(this.message_manager.create_produce_packet(
+                queue,
+                priority,
+                payload
+            ));
 
             if (this.options.logging)
                 this.logger.info('Produced message: %s with priority %d', payload, priority);
@@ -168,14 +193,38 @@ module.exports = class Client {
         if (!this.connected)
             return;
 
-        this.callbacks[queue] = callback;
-        let packet = this.message_manager.create_consume_packet(queue, '');
-
         try {
-            await this.send(packet);
+            this.callbacks[queue] = callback;
+            await this.send(this.message_manager.create_consume_packet(queue, ''));
         }
         catch (e) {
             console.log(e);
         }
+    }
+
+    async request(type, payload) {
+        if (!this.connected)
+            return;
+
+        try {
+            await this.send(this.message_manager.create_request_packet(
+                type,
+                JSON.stringify(payload)
+            ));
+
+            if (this.options.logging)
+                this.logger.info('Request message: %s with payload %s', type, payload);
+        }
+        catch (e) {
+            console.log(e);
+        }
+    }
+
+    async create_queue(name, capacity = 100000) {
+        return await this.request(MessageManager.types.CREATE_QUEUE, { name, capacity });
+    }
+
+    async delete_queue(name) {
+        return await this.request(MessageManager.types.DELETE_QUEUE, { name });
     }
 }

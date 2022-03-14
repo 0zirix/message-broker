@@ -2,7 +2,7 @@ syntax = "proto3";
 
 message Publish {
     string queue = 1;
-    int32 priority = 2;
+    uint32 priority = 2;
     string payload = 3;
 }
 
@@ -12,7 +12,7 @@ message Subscribe {
 
 message Produce {
     string queue = 1;
-    int32 priority = 2;
+    uint32 priority = 2;
     string payload = 3;
 }
 
@@ -21,11 +21,29 @@ message Consume {
     string payload = 2;
 }
 
+message Request {
+    uint32 type = 1;
+    string payload = 2;
+}
+
+message Response {
+    uint32 status = 1;
+    string payload = 2;
+}
+
+message Acknowledge {
+    uint32 type = 1;
+    uint32 id = 2;
+}
+
 message Packet {
     oneof payload {
         Publish publish = 1;
         Subscribe subscribe = 2;
         Produce produce = 3;
         Consume consume = 4;
+        Request request = 5;
+        Response response = 6;
+        Acknowledge acknowledge = 7;
     }
 }

@@ -37,7 +37,7 @@
                             <small>
                                 <span class="link-primary" @click="purge_queue(queue.id)">Purge</span>
                                 <span class="link-danger" @click="remove_queue(queue.id)">Remove</span>
-                                <span>{{queue.size}} / {{queue.capacity}} {{bytes_to_human(queue.memory)}}</span>
+                                <span>{{queue.size}} / {{queue.capacity}} {{bytes_to_human(queue.memory)}} {{queue.messages_per_sec_in}}/s {{queue.messages_per_sec_out}}/s</span>
                             </small>
                         </div>
                     </a>
@@ -133,7 +133,9 @@
                                 memory: stat.memory,
                                 name: this.queues[index].name,
                                 index: this.queues[index].index,
-                                capacity: this.queues[index].capacity
+                                capacity: this.queues[index].capacity,
+                                messages_per_sec_in: stat.messages_per_sec_in,
+                                messages_per_sec_out: stat.messages_per_sec_out
                             });
                         }
                     }

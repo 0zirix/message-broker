@@ -6,7 +6,8 @@ module.exports = class QueueManager {
     constructor(storage_manager) {
         this.storage_manager = storage_manager;
         this.queues = {};
-        this.messages = [];
+        this.messages = {};
+        this.metrics = {};
 
         this.queue_storage_key = 'queue_list';
     }
@@ -24,6 +25,11 @@ module.exports = class QueueManager {
             let data = JSON.parse(q);
 
             if (typeof this.queues[data.name] == 'undefined') {
+                this.metrics[data.name] = {
+                    messages_per_sec_in: 0,
+                    messages_per_sec_out: 0
+                };
+
                 this.queues[data.name] = new Queue(
                     data.name,
                     data.capacity,
@@ -63,6 +69,11 @@ module.exports = class QueueManager {
             if (typeof this.queues[name] == 'undefined') {
                 let queue = new Queue(name, capacity, id);
                 this.queues[name] = queue;
+                this.metrics[name] = {
+                    messages_per_sec_in: 0,
+                    messages_per_sec_out: 0
+                };
+
                 await this.save_queue(queue);
 
                 return resolve(queue);
@@ -73,14 +84,15 @@ module.exports = class QueueManager {
         });
     }
 
-    add_message_to_queue(queue, priority, payload) {
+    push_message_to_queue(queue, priority, payload) {
         if (typeof this.queues[queue] != 'undefined') {
             let message = new Message(payload, priority);
             let added = this.queues[queue].push(message.id, priority);
 
             if (added) {
-                this.messages.push(message);
+                this.messages[message.id] = message;
                 this.queues[queue].memory += Helper.size_of(message);
+                this.metrics[queue].messages_per_sec_in++;
                 return true;
             }
         }
@@ -91,12 +103,13 @@ module.exports = class QueueManager {
     pop_message_from_queue(queue) {
         if (typeof this.queues[queue] != 'undefined') {
             let id = this.queues[queue].pop();
-            let index = this.messages.findIndex(m => m.id === id);
 
-            if (index >= 0) {
-                let message = this.messages[index];
+            if (typeof this.messages[id] != 'undefined') {
+                let message = this.messages[id];
+
                 this.queues[queue].memory -= Helper.size_of(message);
-                this.messages.splice(index, 1);
+                delete this.messages[id];
+                this.metrics[queue].messages_per_sec_out++;
 
                 return message;
             }
@@ -108,11 +121,9 @@ module.exports = class QueueManager {
     peek_message_from_queue(queue) {
         if (typeof this.queues[queue] != 'undefined') {
             let id = this.queues[queue].peek();
-            let index = this.messages.findIndex(m => m.id === id);
 
-            if (index >= 0) {
-                return this.messages[index];
-            }
+            if (typeof this.messages[id] != 'undefined')
+                return this.messages[id];
         }
 
         return null;
@@ -168,7 +179,9 @@ module.exports = class QueueManager {
                 name: queue.name,
                 size: queue.size(),
                 memory: queue.memory,
-                capacity: queue.capacity
+                capacity: queue.capacity,
+                messages_per_sec_in: this.metrics[queue.name].messages_per_sec_in,
+                messages_per_sec_out: this.metrics[queue.name].messages_per_sec_out
             });
         }
 
@@ -185,8 +198,15 @@ module.exports = class QueueManager {
                 id: queue.id,
                 size: queue.size(),
                 memory: queue.memory,
-                capacity: queue.capacity
+                capacity: queue.capacity,
+                messages_per_sec_in: this.metrics[name].messages_per_sec_in,
+                messages_per_sec_out: this.metrics[name].messages_per_sec_out
             });
+        }
+
+        for (let m in this.metrics) {
+            this.metrics[m].messages_per_sec_in = 0;
+            this.metrics[m].messages_per_sec_out = 0;
         }
 
         return stats;

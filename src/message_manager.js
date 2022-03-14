@@ -2,6 +2,11 @@ const path = require('path');
 const protobuf = require("protobufjs");
 
 module.exports = class MessageManager {
+    static types = {
+        CREATE_QUEUE: 0,
+        DELETE_QUEUE: 1
+    };
+
     constructor(logger, queue_manager, options = {}) {
         this.options = {
             logging: options.logging || process.env.LOGGING || true
@@ -15,6 +20,7 @@ module.exports = class MessageManager {
     load_protocol() {
         return new Promise((resolve, reject) => {
             const proto_path = path.join(__dirname, './protos/messages.proto');
+
             protobuf.load(proto_path, (error, root) => {
                 if (error)
                     reject(error);
@@ -26,86 +32,87 @@ module.exports = class MessageManager {
         });
     }
 
-    decode(buffer) {
+    async receive(chunk) {
         return new Promise((resolve, reject) => {
             try {
                 const PacketMessage = this.protocol.lookupType('Packet');
-                const decoded = PacketMessage.decode(buffer);
-                resolve(decoded);
+                resolve(PacketMessage.decode(chunk, chunk.length));
             }
             catch (e) {
                 reject(e);
+                console.log(e)
             }
         });
     }
 
-    create_publish_packet(queue, priority, payload) {
+    create_packet(data) {
         if (this.protocol) {
             let PacketMessage = this.protocol.lookupType('Packet');
-
-            let message = PacketMessage.create({
-                publish: {
-                    queue,
-                    priority,
-                    payload,
-                }
-            });
-
-            return PacketMessage.encode(message).finish();
+            return PacketMessage.encode(PacketMessage.create(data)).finish();
         }
+    }
+
+    create_publish_packet(queue, priority, payload) {
+        return this.create_packet({
+            publish: {
+                queue,
+                priority,
+                payload,
+            }
+        });
     }
 
     create_subscribe_packet(queue) {
-        if (this.protocol) {
-            let PacketMessage = this.protocol.lookupType('Packet');
-
-            let message = PacketMessage.create({
-                subscribe: {
-                    queue
-                }
-            });
-
-            return PacketMessage.encode(message).finish();
-        }
+        return this.create_packet({
+            subscribe: {
+                queue
+            }
+        });
     }
 
     create_produce_packet(queue, priority, payload) {
-        if (this.protocol) {
-            let PacketMessage = this.protocol.lookupType('Packet');
-
-            let message = PacketMessage.create({
-                produce: {
-                    queue,
-                    priority,
-                    payload,
-                }
-            });
-
-            return PacketMessage.encode(message).finish();
-        }
+        return this.create_packet({
+            produce: {
+                queue,
+                priority,
+                payload,
+            }
+        });
     }
 
     create_consume_packet(queue, payload) {
-        if (this.protocol) {
-            let PacketMessage = this.protocol.lookupType('Packet');
-
-            let message = PacketMessage.create({
-                consume: {
-                    queue,
-                    payload
-                }
-            });
-
-            return PacketMessage.encode(message).finish();
-        }
+        return this.create_packet({
+            consume: {
+                queue,
+                payload,
+            }
+        });
     }
 
-    async dispatch(queue, priority, message) {
-        try {
-            await this.queue_manager.add_message_to_queue(queue, priority, message);
-        }
-        catch (e) {
-            console.log(e);
-        }
+    create_request_packet(type, payload) {
+        return this.create_packet({
+            request: {
+                type,
+                payload
+            }
+        });
+    }
+
+    create_response_packet(status, payload) {
+        return this.create_packet({
+            response: {
+                status,
+                payload
+            }
+        });
+    }
+
+    create_acknowledge_packet(type, id) {
+        return this.create_packet({
+            acknowledge: {
+                type,
+                id
+            }
+        });
     }
 }

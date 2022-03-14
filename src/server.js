@@ -16,7 +16,8 @@ module.exports = class Server {
             host: options.host || process.env.HOST || '0.0.0.0',
             exclusive: false,
             ui_enabled: options.ui_enabled || process.env.UI_ENABLED || true,
-            publish_interval: options.publish_interval || process.env.PUBLISH_INTERVAL || 3
+            publish_interval: options.publish_interval || process.env.PUBLISH_INTERVAL || 3,
+            queue_max_capacity: options.queue_max_capacity || process.env.QUEUE_MAX_CAPACITY || 1000000,
         };
 
         this.logger = new Logger('SERVER');
@@ -32,6 +33,7 @@ module.exports = class Server {
             this.ui_manager = new UIManager(this);
 
         this.instance = null;
+        this.ready = false;
         this.subscribers = {};
     }
 
@@ -39,20 +41,22 @@ module.exports = class Server {
         return new Promise(async (resolve, reject) => {
             if (!this.instance) {
                 this.instance = net.createServer();
-                this.setup_listeners();
-
+            
                 await this.message_manager.load_protocol();
                 await this.storage_manager.connect();
                 await this.queue_manager.load_queues();
 
                 if (this.options.ui_enabled)
                     await this.ui_manager.start();
+
+                this.setup_listeners();
             }
 
             this.instance.listen(this.options, () => {
                 if (this.options.logging)
                     this.logger.info('Server started');
 
+                this.ready = true;
                 resolve(this);
             });
         });
@@ -61,6 +65,7 @@ module.exports = class Server {
     async stop() {
         return new Promise(async (resolve, reject) => {
             await this.storage_manager.disconnect();
+            this.ready = false;
 
             if (this.options.ui_enabled)
                 await this.ui_manager.stop();
@@ -76,32 +81,45 @@ module.exports = class Server {
 
     setup_listeners() {
         this.instance.on('connection', this.handle_connection.bind(this));
+        this.instance.on('listening', this.handle_listening.bind(this));
         this.instance.on('error', this.handle_error.bind(this));
     }
 
+    handle_listening() {
+    
+        this.logger.info('Listening for connections...');
+    }
+
     handle_connection(socket) {
+        if (!this.ready)
+            return false;
+
         if (this.options.logging)
             this.logger.info('Client connected');
 
         socket.id = Helper.generateUID();
         this.socket_manager.add(socket);
 
-        socket.on('data', async data => {
-            let decoded = await this.message_manager.decode(data);
+        socket.on('data', async chunk => {
+            let decoded = await this.message_manager.receive(chunk);
 
-            let accepted = [
-                'publish',
-                'subscribe',
-                'produce',
-                'consume'
-            ];
-
-            if (accepted.indexOf(decoded.payload) >= 0) {
-                try {
-                    await this['handle_' + decoded.payload](decoded, socket);
-                }
-                catch (error) {
-                    console.log(error);
+            if (decoded) {
+                let accepted = [
+                    'publish',
+                    'subscribe',
+                    'produce',
+                    'consume',
+                    'request',
+                    'acknowledge'
+                ];
+    
+                if (accepted.indexOf(decoded.payload) >= 0) {
+                    try {
+                        await this['handle_' + decoded.payload](chunk, decoded, socket);
+                    }
+                    catch (error) {
+                        console.log(error);
+                    }
                 }
             }
         });
@@ -128,38 +146,30 @@ module.exports = class Server {
             this.logger.error(error);
     }
 
-    handle_publish(decoded, socket) {
-        return new Promise(async (resolve, reject) => {
-            let queue = decoded.publish.queue;
+    async handle_publish(chunk, decoded, socket) {
+        let queue = decoded.publish.queue;
 
-            if (Object.keys(this.subscribers).length == 0)
-                return reject('No subscribers');
+        if (Object.keys(this.subscribers).length == 0)
+            return;
 
-            if (typeof this.subscribers[queue] == 'undefined')
-                return reject('No subscriber for queue ' + queue);
+        if (typeof this.subscribers[queue] == 'undefined')
+            return;
 
-            let sockets = this.subscribers[queue];
+        let sockets = this.subscribers[queue];
+        this.queue_manager.metrics[queue].messages_per_sec_in++;
 
-            let packet = this.message_manager.create_publish_packet(
-                queue,
-                decoded.publish.priority,
-                decoded.publish.payload
-            );
+        for (let i = 0; i < sockets.length; ++i) {
+            let client = this.socket_manager.get_socket_by_id(sockets[i]);
 
-            for (let i = 0; i < sockets.length; ++i) {
-                let client = this.socket_manager.get_socket_by_id(sockets[i]);
-
-                if (client) {
-                    client.write(packet);
-                    await Helper.sleep(this.options.publish_interval);
-                }
+            if (client) {
+                client.write(chunk);
+                this.queue_manager.metrics[queue].messages_per_sec_out++;
+                await Helper.sleep(this.options.publish_interval);
             }
-
-            resolve();
-        })
+        }
     }
 
-    async handle_subscribe(decoded, socket) {
+    async handle_subscribe(chunk, decoded, socket) {
         let queue = decoded.subscribe.queue;
 
         if (typeof queue != 'undefined') {
@@ -187,9 +197,9 @@ module.exports = class Server {
         }
     }
 
-    handle_produce(decoded, socket) {
+    handle_produce(chunk, decoded, socket) {
         if (this.queue_manager.queue_exists(decoded.produce.queue)) {
-            this.queue_manager.add_message_to_queue(
+            this.queue_manager.push_message_to_queue(
                 decoded.produce.queue,
                 decoded.produce.priority,
                 decoded.produce.payload
@@ -197,7 +207,7 @@ module.exports = class Server {
         }
     }
 
-    handle_consume(decoded, socket) {
+    handle_consume(chunk, decoded, socket) {
         if (this.queue_manager.queue_exists(decoded.consume.queue)) {
             let message = this.queue_manager.pop_message_from_queue(decoded.consume.queue);
 
@@ -206,5 +216,43 @@ module.exports = class Server {
                 socket.write(packet);
             }
         }
+    }
+
+    async handle_request(chunk, decoded, socket) {
+        switch (decoded.request.type) {
+            case MessageManager.types.CREATE_QUEUE: {
+                if (typeof decoded.request.payload != 'undefined') {
+                    try {
+                        const params = JSON.parse(decoded.request.payload);
+                        let capacity = this.options.queue_max_capacity;
+
+                        if (typeof params.capacity != 'undefined') {
+                            if (!isNaN(parseInt(params.capacity)) && capacity <= this.options.queue_max_capacity) {
+                                capacity = params.capacity;
+                            }
+                        }
+
+                        if (typeof params.name != 'undefined') {
+                            if (!this.queue_manager.queue_exists(params.name)) {
+                                const queue = await this.queue_manager.create_queue(params.name, capacity);
+                                this.logger.info('Created queue: %s with id %s',  queue.name, queue.id);
+                            }
+                        }
+                    }
+                    catch (error) {
+                        console.log('Request packet, cannot create queue', error);
+                    }
+                }
+                break;
+            }
+            case MessageManager.types.DELETE_QUEUE: {
+                console.log('DELLLLLLLLLLL');
+                break;
+            }
+        }
+    }
+
+    handle_acknowledge(chunk, decoded, socket) {
+
     }
 }
