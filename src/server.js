@@ -7,7 +7,6 @@ const QueueManager = require('./queue_manager');
 const SocketManager = require('./socket_manager')
 const StorageManager = require('./storage_manager');
 const UIManager = require('./ui_manager');
-const { cp } = require('fs');
 
 module.exports = class Server {
     constructor(options = {}) {
@@ -262,6 +261,32 @@ module.exports = class Server {
                     catch (error) {
                         send_error_packet(400, `Internal server error, cannot create queue.`);
                         console.log('Request packet error: cannot create queue', error);
+                    }
+                }
+                break;
+            }
+            case MessageManager.types.COUNT_QUEUE: {
+                if (typeof decoded.request.payload != 'undefined') {
+                    try {
+                        const params = JSON.parse(decoded.request.payload);
+
+                        if (typeof params.name == 'undefined')
+                            return send_error_packet(400, `You must provide a queue name.`);
+
+                        if (!this.queue_manager.queue_exists(params.name))
+                            return send_error_packet(404, `Cannot find a queue with name '${params.name}'.`);
+
+                        const count = await this.queue_manager.count_queue(params.name);
+                        const packet = this.message_manager.create_response_packet(decoded.request.type, 200, JSON.stringify({
+                            queue: { count }
+                        }));
+
+                        socket.write(packet);
+                        await Helper.sleep(this.options.publish_interval);
+                    }
+                    catch (error) {
+                        send_error_packet(400, `Internal server error, cannot count queue.`);
+                        console.log('Request packet error: cannot count queue', error);
                     }
                 }
                 break;

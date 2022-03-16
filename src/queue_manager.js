@@ -84,6 +84,13 @@ module.exports = class QueueManager {
         });
     }
 
+    count_queue(name) {
+        if (typeof this.queues[name] != 'undefined')
+            return this.queues[name].size();
+        
+        return 0;
+    }
+
     push_message_to_queue(queue, priority, payload) {
         if (typeof this.queues[queue] != 'undefined') {
             let message = new Message(payload, priority);

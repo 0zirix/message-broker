@@ -15,11 +15,16 @@ require('dotenv').config();
             client.connect();
 
             client.on('ready', async () => {
-                await client.create_queue('test', 100, response => {
+                await client.create_queue('test', 1000, response => {
                     console.log('Created queue', response);
                 });
 
-                await client.produce('test', 'hohohoho', 1);
+                for (let i = 0; i < 256; ++i)
+                    await client.produce('test', 'hohohoho', 1);
+
+                await client.count_queue('test', response => {
+                    console.log('Counted queue', response);
+                });
 
                 await client.purge_queue('test', response => {
                     console.log('Purged queue', response);

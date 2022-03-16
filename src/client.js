@@ -192,9 +192,6 @@ module.exports = class Client extends EventEmitter {
                 priority,
                 payload
             ));
-
-            if (this.options.logging)
-                this.logger.info('Produced message: %s with priority %d', payload, priority);
         }
         catch (e) {
             console.log(e);
@@ -233,6 +230,10 @@ module.exports = class Client extends EventEmitter {
 
     async create_queue(name, capacity = 100000, callback) {
         return await this.request(MessageManager.types.CREATE_QUEUE, { name, capacity }, callback);
+    }
+
+    async count_queue(name, callback) {
+        return await this.request(MessageManager.types.COUNT_QUEUE, { name }, callback);
     }
 
     async purge_queue(name, callback) {
