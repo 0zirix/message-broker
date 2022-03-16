@@ -7,6 +7,7 @@ const QueueManager = require('./queue_manager');
 const SocketManager = require('./socket_manager')
 const StorageManager = require('./storage_manager');
 const UIManager = require('./ui_manager');
+const { cp } = require('fs');
 
 module.exports = class Server {
     constructor(options = {}) {
@@ -95,7 +96,7 @@ module.exports = class Server {
             return false;
 
         if (this.options.logging)
-            this.logger.info('Client connected');
+            this.logger.info('Client connected %s', socket.remoteAddress);
 
         socket.id = Helper.generateUID();
         this.socket_manager.add(socket);
@@ -212,13 +213,22 @@ module.exports = class Server {
             let message = this.queue_manager.pop_message_from_queue(decoded.consume.queue);
 
             if (message) {
-                let packet = this.message_manager.create_consume_packet(decoded.consume.queue, message.payload);
-                socket.write(packet);
+                socket.write(this.message_manager.create_consume_packet(
+                    decoded.consume.queue,
+                    message.payload
+                ));
             }
         }
     }
 
     async handle_request(chunk, decoded, socket) {
+
+        const send_error_packet = (status, message) => {
+            socket.write(this.message_manager.create_response_packet(decoded.request.type, status, JSON.stringify({
+                error: { message }
+            })));
+        };
+
         switch (decoded.request.type) {
             case MessageManager.types.CREATE_QUEUE: {
                 if (typeof decoded.request.payload != 'undefined') {
@@ -226,21 +236,31 @@ module.exports = class Server {
                         const params = JSON.parse(decoded.request.payload);
                         let capacity = this.options.queue_max_capacity;
 
-                        if (typeof params.capacity != 'undefined') {
-                            if (!isNaN(parseInt(params.capacity)) && capacity <= this.options.queue_max_capacity) {
+                        if (typeof params.capacity != 'undefined')
+                            if (!isNaN(parseInt(params.capacity)) && capacity <= this.options.queue_max_capacity)
                                 capacity = params.capacity;
-                            }
-                        }
 
-                        if (typeof params.name != 'undefined') {
-                            if (!this.queue_manager.queue_exists(params.name)) {
-                                const queue = await this.queue_manager.create_queue(params.name, capacity);
-                                this.logger.info('Created queue: %s with id %s', queue.name, queue.id);
-                                // TODO: send client response packet
+                        if (typeof params.name == 'undefined')
+                            return send_error_packet(400, `You must provide a queue name.`);
+
+                        if (this.queue_manager.queue_exists(params.name))
+                            return send_error_packet(400, `A queue with name '${params.name}' already exists.`);
+
+                        const queue = await this.queue_manager.create_queue(params.name, capacity);
+                        const packet = this.message_manager.create_response_packet(decoded.request.type, 200, JSON.stringify({
+                            queue: {
+                                id: queue.id,
+                                name: queue.name,
+                                capacity: queue.capacity
                             }
-                        }
+                        }));
+
+                        socket.write(packet);
+                        await Helper.sleep(this.options.publish_interval);
+                        this.logger.info('Created queue: %s with id %s', queue.name, queue.id);
                     }
                     catch (error) {
+                        send_error_packet(400, `Internal server error, cannot create queue.`);
                         console.log('Request packet error: cannot create queue', error);
                     }
                 }
@@ -251,22 +271,59 @@ module.exports = class Server {
                     try {
                         const params = JSON.parse(decoded.request.payload);
 
-                        if (typeof params.name != 'undefined') {
-                            if (this.queue_manager.queue_exists(params.name)) {
-                                const count = await this.queue_manager.purge_queue_by_name(params.name);
-                                this.logger.info('Purged %d in queue %s', count, params.name);
-                                // TODO: send client response packet
+                        if (typeof params.name == 'undefined')
+                            return send_error_packet(400, `You must provide a queue name.`);
+
+                        if (!this.queue_manager.queue_exists(params.name))
+                            return send_error_packet(404, `Cannot find a queue with name '${params.name}'.`);
+
+                        const count = await this.queue_manager.purge_queue_by_name(params.name);
+                        const packet = this.message_manager.create_response_packet(decoded.request.type, 200, JSON.stringify({
+                            queue: {
+                                name: params.name,
+                                purged: count
                             }
-                        }
+                        }));
+
+                        socket.write(packet);
+                        await Helper.sleep(this.options.publish_interval);
+                        this.logger.info('Purged %d messages in queue %s', count, params.name);
                     }
                     catch (error) {
+                        send_error_packet(400, `Internal server error, cannot purge queue.`);
                         console.log('Request packet error: cannot purge queue', error);
                     }
                 }
                 break;
             }
             case MessageManager.types.DELETE_QUEUE: {
-                console.log('DELLLLLLLLLLL');
+                if (typeof decoded.request.payload != 'undefined') {
+                    try {
+                        const params = JSON.parse(decoded.request.payload);
+
+                        if (typeof params.name == 'undefined')
+                            return send_error_packet(400, `You must provide a queue name.`);
+
+                        if (!this.queue_manager.queue_exists(params.name))
+                            return send_error_packet(404, `Cannot find a queue with name '${params.name}'.`);
+
+                        const deleted = await this.queue_manager.delete_queue_by_name(params.name);
+                        const packet = this.message_manager.create_response_packet(decoded.request.type, 200, JSON.stringify({
+                            queue: {
+                                name: params.name,
+                                deleted: deleted
+                            }
+                        }));
+
+                        socket.write(packet);
+                        await Helper.sleep(this.options.publish_interval);
+                        this.logger.info('Delete queue %s', params.name);
+                    }
+                    catch (error) {
+                        send_error_packet(400, `Internal server error, cannot delete queue.`);
+                        console.log('Request packet error: cannot delete queue', error);
+                    }
+                }
                 break;
             }
         }

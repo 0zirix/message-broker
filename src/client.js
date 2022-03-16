@@ -2,6 +2,7 @@ const net = require('net');
 const EventEmitter = require('events');
 
 const Logger = require('./logger');
+const Helper = require('./helper');
 const MessageManager = require('./message_manager');
 
 module.exports = class Client extends EventEmitter {
@@ -63,6 +64,18 @@ module.exports = class Client extends EventEmitter {
                             break;
                         }
                         case 'response': {
+                            try {
+                                const response = JSON.parse(packet.response.payload);
+                                const callback_name = 'response_' + packet.response.type;
+
+                                if (typeof this.callbacks[callback_name] != 'undefined') {
+                                    this.callbacks[callback_name](response);
+                                    delete this.callbacks[callback_name];
+                                }
+                            }
+                            catch (error) {
+                                console.log('Cannot parse response packet payload.');
+                            }
                             break;
                         }
                         case 'acknowledge': {
@@ -124,14 +137,13 @@ module.exports = class Client extends EventEmitter {
     }
 
     send(payload) {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             if (!this.connected)
                 return;
 
-            this.socket.write(payload, error => {
-                if (error) reject(error);
-                else resolve()
-            })
+            this.socket.write(payload);
+            await Helper.sleep(3);
+            resolve();
         })
     }
 
@@ -202,33 +214,32 @@ module.exports = class Client extends EventEmitter {
         }
     }
 
-    async request(type, payload) {
+    async request(type, payload, callback) {
         if (!this.connected)
             return;
 
         try {
+            this.callbacks['response_' + type] = callback;
+
             await this.send(this.message_manager.create_request_packet(
                 type,
                 JSON.stringify(payload)
             ));
-
-            if (this.options.logging)
-                this.logger.info('Request message: %s with payload %s', type, payload);
         }
         catch (e) {
             console.log(e);
         }
     }
 
-    async create_queue(name, capacity = 100000) {
-        return await this.request(MessageManager.types.CREATE_QUEUE, { name, capacity });
+    async create_queue(name, capacity = 100000, callback) {
+        return await this.request(MessageManager.types.CREATE_QUEUE, { name, capacity }, callback);
     }
 
-    async purge_queue(name) {
-        return await this.request(MessageManager.types.PURGE_QUEUE, { name });
+    async purge_queue(name, callback) {
+        return await this.request(MessageManager.types.PURGE_QUEUE, { name }, callback);
     }
 
-    async delete_queue(name) {
-        return await this.request(MessageManager.types.DELETE_QUEUE, { name });
+    async delete_queue(name, callback) {
+        return await this.request(MessageManager.types.DELETE_QUEUE, { name }, callback);
     }
 }

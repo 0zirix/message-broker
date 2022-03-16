@@ -1,3 +1,5 @@
+const Helper = require('./helper');
+
 require('dotenv').config();
 
 (async () => {
@@ -13,9 +15,19 @@ require('dotenv').config();
             client.connect();
 
             client.on('ready', async () => {
-                // await client.create_queue('omgitworks');
-                // await client.delete_queue('test');
-                await client.purge_queue('test')
+                await client.create_queue('test', 100, response => {
+                    console.log('Created queue', response);
+                });
+
+                await client.produce('test', 'hohohoho', 1);
+
+                await client.purge_queue('test', response => {
+                    console.log('Purged queue', response);
+                });
+
+                await client.delete_queue('test', response => {
+                    console.log('Deleted queue', response);
+                });
 
                 client.subscribe('todo', message => {
                     console.log(message);

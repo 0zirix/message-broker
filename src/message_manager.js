@@ -99,9 +99,10 @@ module.exports = class MessageManager {
         });
     }
 
-    create_response_packet(status, payload) {
+    create_response_packet(type, status, payload) {
         return this.create_packet({
             response: {
+                type,
                 status,
                 payload
             }

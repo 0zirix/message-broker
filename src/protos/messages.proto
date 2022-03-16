@@ -27,8 +27,9 @@ message Request {
 }
 
 message Response {
-    uint32 status = 1;
-    string payload = 2;
+    uint32 type = 1;
+    uint32 status = 2;
+    string payload = 3;
 }
 
 message Acknowledge {

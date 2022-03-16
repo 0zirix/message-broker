@@ -151,6 +151,22 @@ module.exports = class QueueManager {
         return null;
     }
 
+    async delete_queue_by_name(name) {
+        if (typeof this.queues[name] != 'undefined') {
+            await this.delete_queue(JSON.stringify({
+                id: this.queues[name].id,
+                name: this.queues[name].name,
+                capacity: this.queues[name].capacity,
+                size: 0
+            }));
+
+            delete this.queues[name];
+            return true;
+        }
+
+        return false;
+    }
+
     purge_queue_by_name(name) {
         if (typeof this.queues[name] != 'undefined') {
             let size = this.queues[name].size();
