@@ -18,7 +18,7 @@ require('dotenv').config();
 
             client.connect();
 
-            client.on('ready', async () => {
+            client.on('identified', async () => {
                 await client.create_queue('test', 1000, response => {
                     console.log('Created queue', response);
                 });
@@ -42,11 +42,11 @@ require('dotenv').config();
                     console.log(message);
                 });
 
-                setInterval(() => {
-                    client.consume('test', data => {
-                        console.log(data);
-                    });
-                }, 3)
+                // setInterval(() => {
+                //     client.consume('test', data => {
+                //         console.log(data);
+                //     });
+                // }, 3)
             });
 
             //await client.disconnect();

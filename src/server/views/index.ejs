@@ -26,7 +26,18 @@
     <div id="app" class="container-fluid">
         <div class="row">
             <div class="col-md-3">
-                <span class="fs-5 fw-semibold">Publishers</span>
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <td>Invalid Packets</td>
+                            <td style="text-align: right;">{{messages_metrics.invalid_packets || 0}}</td>
+                        </tr>
+                        <tr>
+                            <td>Total received</td>
+                            <td style="text-align: right;">{{bytes_to_human(messages_metrics.total_received_bytes || 0) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
             <div class="col-md-6">
                 <span class="fs-5 fw-semibold">Queues</span>
@@ -64,7 +75,7 @@
                 </table>
             </div>
             <div class="col-md-2">
-                <span class="fs-5 fw-semibold">Subscribers</span>
+                
             </div>
             <div class="col-md-4">
                 <fieldset>
@@ -123,7 +134,8 @@
                     },
                     socket: null,
                     connected: false,
-                    queues: []
+                    queues: [],
+                    messages_metrics: {}
                 }
             },
             async mounted() {
@@ -159,6 +171,10 @@
                             });
                         }
                     }
+                });
+
+                this.socket.on('messages:stats', stats => {
+                    this.messages_metrics = stats;
                 });
             },
             methods: {

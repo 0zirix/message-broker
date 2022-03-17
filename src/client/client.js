@@ -71,9 +71,12 @@ module.exports = class Client extends EventEmitter {
                             try {
                                 const response = JSON.parse(packet.response.payload);
 
-                                if (packet.response.type === MessageManager.types.AUTH_CHALLENGE) {
-                                    if (response.auth.status === 'LOGGED')
-                                        this.emit('ready');
+                                if (packet.response.type === MessageManager.types.AUTH_CHALLENGE 
+                                && response.auth.status === 'LOGGED') {
+                                    if (this.options.logging)
+                                        this.logger.info('Identified');
+
+                                    this.emit('identified');
                                 } else {
                                     const callback_name = 'response_' + packet.response.type;
 
@@ -114,11 +117,12 @@ module.exports = class Client extends EventEmitter {
             this.connecting = false;
 
             if (url.username.length > 0 && url.password.length > 0) {
+                if (this.options.logging)
+                    this.logger.info('Identifying...')
+
                 await this.request(MessageManager.types.AUTH_CHALLENGE, {
                     username: url.username,
                     password: url.password
-                }, () => {
-                    this.emit('ready');
                 });
             }
             else
@@ -141,6 +145,9 @@ module.exports = class Client extends EventEmitter {
             this.connecting = false;
 
             this.emit('disconnect');
+
+            if (this.options.logging)
+                this.logger.warn('Connection closed');
 
             if (error && this.options.logging)
                 this.logger.error(error);

@@ -15,9 +15,15 @@ module.exports = class MessageManager {
             logging: options.logging || process.env.LOGGING || true
         };
 
+        this.metrics = {
+            invalid_packets: 0,
+            total_received_bytes: 0,
+        };
+
         this.logger = logger;
         this.queue_manager = queue_manager;
         this.protocol = null;
+        this.PacketMessage = null;
     }
 
     load_protocol() {
@@ -29,6 +35,7 @@ module.exports = class MessageManager {
                     reject(error);
                 else {
                     this.protocol = root;
+                    this.PacketMessage = this.protocol.lookupType('Packet');
                     resolve();
                 }
             });
@@ -38,8 +45,20 @@ module.exports = class MessageManager {
     async receive(chunk) {
         return new Promise((resolve, reject) => {
             try {
-                const PacketMessage = this.protocol.lookupType('Packet');
-                resolve(PacketMessage.decode(chunk, chunk.length));
+                const error = this.PacketMessage.verify(chunk);
+
+                if (error)
+                    this.metrics.invalid_packets++;
+                else {
+                    try {
+                        this.metrics.total_received_bytes += chunk.length;
+                        const data = this.PacketMessage.decode(chunk, chunk.length);
+                        resolve(data);
+                    }
+                    catch (err) {
+                        this.metrics.invalid_packets++;
+                    }
+                }
             }
             catch (e) {
                 reject(e);
@@ -50,8 +69,7 @@ module.exports = class MessageManager {
 
     create_packet(data) {
         if (this.protocol) {
-            let PacketMessage = this.protocol.lookupType('Packet');
-            return PacketMessage.encode(PacketMessage.create(data)).finish();
+            return this.PacketMessage.encode(this.PacketMessage.create(data)).finish();
         }
     }
 

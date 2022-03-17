@@ -27,7 +27,7 @@ module.exports = class Server {
         this.logger = new Logger('SERVER');
         this.socket_manager = new SocketManager();
         this.storage_manager = new StorageManager();
-        
+
         this.message_manager = new MessageManager(this.logger, this.queue_manager, {
             logging: this.options.logging
         });
@@ -112,26 +112,33 @@ module.exports = class Server {
         this.socket_manager.add(socket);
 
         socket.on('data', async chunk => {
-            let decoded = await this.message_manager.receive(chunk);
+            try {
+                let decoded = await this.message_manager.receive(chunk);
 
-            if (decoded) {
-                let accepted = [
-                    'publish',
-                    'subscribe',
-                    'produce',
-                    'consume',
-                    'request',
-                    'acknowledge'
-                ];
+                if (decoded) {
+                    let accepted = [
+                        'publish',
+                        'subscribe',
+                        'produce',
+                        'consume',
+                        'request',
+                        'acknowledge'
+                    ];
 
-                if (accepted.indexOf(decoded.payload) >= 0) {
-                    try {
-                        await this['handle_' + decoded.payload](chunk, decoded, socket);
-                    }
-                    catch (error) {
-                        console.log(error);
+                    if (accepted.indexOf(decoded.payload) >= 0) {
+                        try {
+                            await this['handle_' + decoded.payload](chunk, decoded, socket);
+                        }
+                        catch (error) {
+                            if (this.options.logging)
+                                console.error(error);
+                        }
                     }
                 }
+            }
+            catch (error) {
+                if (this.options.logging)
+                    console.error(error);
             }
         });
 

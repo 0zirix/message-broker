@@ -55,6 +55,7 @@ module.exports = class UIManager {
 
         this.refresh_id = setInterval(() => {
             this.io.sockets.emit('queue:stats', this.broker.queue_manager.get_stats());
+            this.io.sockets.emit('messages:stats', this.broker.message_manager.metrics);
         }, this.options.refresh_interval);
 
         this.io.on('connection', (socket) => {
