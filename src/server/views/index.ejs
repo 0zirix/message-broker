@@ -30,18 +30,38 @@
             </div>
             <div class="col-md-6">
                 <span class="fs-5 fw-semibold">Queues</span>
-                <div class="list-group list-group-flush border-bottom scrollarea" v-for="queue in queues">
-                    <a href="#" class="list-group-item list-group-item-action py-3 lh-tight">
-                        <div class="d-flex w-100 align-items-center justify-content-between">
-                            <strong class="mb-1">{{queue.name}}</strong>
-                            <small>
-                                <span class="link-primary" @click="purge_queue(queue.id)">Purge</span>
-                                <span class="link-danger" @click="remove_queue(queue.id)">Remove</span>
-                                <span>{{queue.size}} / {{queue.capacity}} {{bytes_to_human(queue.memory)}} {{queue.messages_per_sec_in}}/s {{queue.messages_per_sec_out}}/s</span>
-                            </small>
-                        </div>
-                    </a>
-                </div>
+                <table class="table table-striped table-hover bg-light">
+                    <thead>
+                        <tr>
+                            <th>NAME</th>
+                            <th class="text-center">SIZE</th>
+                            <th class="text-center">MEMORY</th>
+                            <th class="text-center">SPEED IN</th>
+                            <th class="text-center">SPEED OUT</th>
+                            <th colspan="2">ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="queue in queues">
+                            <td>{{queue.name}}</td>
+                            <td class="text-center" style="min-width: 100px;">
+                                <div class="progress" style="position: relative;background: #d3d3d3;">
+                                    <div class="progress-bar" role="progressbar"
+                                        :style="{width: get_progress_percent(queue.size, queue.capacity) + '%'}">
+                                    </div>
+                                    <div style="position: absolute; left:0; right: 0; text-align: center;">
+                                        {{queue.size}} / {{queue.capacity}}
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-center">{{bytes_to_human(queue.memory)}}</td>
+                            <td class="text-center">{{queue.messages_per_sec_in}}/s</td>
+                            <td class="text-center">{{queue.messages_per_sec_out}}/s</td>
+                            <td><a href="#" @click.prevent="purge_queue(queue.id)">Purge</span></td>
+                            <td><a href="#" @click.prevent="remove_queue(queue.id)">Remove</span></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
             <div class="col-md-2">
                 <span class="fs-5 fw-semibold">Subscribers</span>
@@ -181,6 +201,10 @@
                         priority: 1,
                         text: 'test'
                     };
+                },
+
+                get_progress_percent(current, max) {
+                    return (current / max) * 100;
                 },
 
                 // Helper methods

@@ -1,5 +1,5 @@
 const { MinQueue } = require("heapify");
-const Helper = require('./helper');
+const Helper = require('../shared/helper');
 
 module.exports = class Queue {
     constructor(name, capacity = 100000, id = null) {

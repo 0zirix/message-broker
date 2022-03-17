@@ -1,17 +1,16 @@
 const net = require('net');
 const EventEmitter = require('events');
 
-const Logger = require('./logger');
-const Helper = require('./helper');
-const MessageManager = require('./message_manager');
+const Logger = require('../shared/logger');
+const Helper = require('../shared/helper');
+const MessageManager = require('../shared/message_manager');
 
 module.exports = class Client extends EventEmitter {
     constructor(options = {}) {
         super();
         this.options = {
+            url: options.url || process.env.SERVER_URL || 'mtp://localhost:1025',
             logging: options.logging || process.env.LOGGING || true,
-            port: options.port || process.env.PORT || 1025,
-            host: options.host || process.env.HOST || '127.0.0.1'
         };
 
         this.logger = new Logger('CLIENT');
@@ -25,7 +24,12 @@ module.exports = class Client extends EventEmitter {
 
     async connect() {
         await this.message_manager.load_protocol();
-        this.socket = net.connect(this.options);
+        const url = new URL(this.options.url);
+
+        this.socket = net.connect({
+            host: url.hostname,
+            port: url.port
+        });
 
         this.socket.on('data', async data => {
             try {
@@ -66,11 +70,16 @@ module.exports = class Client extends EventEmitter {
                         case 'response': {
                             try {
                                 const response = JSON.parse(packet.response.payload);
-                                const callback_name = 'response_' + packet.response.type;
 
-                                if (typeof this.callbacks[callback_name] != 'undefined') {
-                                    this.callbacks[callback_name](response);
-                                    delete this.callbacks[callback_name];
+                                if (packet.response.type === MessageManager.types.AUTH_CHALLENGE) {
+                                    console.log(response)
+                                } else {
+                                    const callback_name = 'response_' + packet.response.type;
+
+                                    if (typeof this.callbacks[callback_name] != 'undefined') {
+                                        this.callbacks[callback_name](response);
+                                        delete this.callbacks[callback_name];
+                                    }
                                 }
                             }
                             catch (error) {
@@ -96,14 +105,23 @@ module.exports = class Client extends EventEmitter {
             this.emit('error', error);
         });
 
-        this.socket.on('ready', () => {
+        this.socket.on('ready', async () => {
             if (this.options.logging)
                 this.logger.info('Connected');
 
             this.connected = true;
             this.connecting = false;
 
-            this.emit('ready');
+            if (url.username.length > 0 && url.password.length > 0) {
+                await this.request(MessageManager.types.AUTH_CHALLENGE, {
+                    username: url.username,
+                    password: url.password
+                }, () => {
+                    this.emit('ready');
+                });
+            }
+            else
+                this.emit('ready');
         });
 
         this.socket.on('connect', () => {

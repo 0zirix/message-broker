@@ -1,8 +1,8 @@
 const net = require('net');
 
-const Logger = require('./logger');
-const Helper = require('./helper');
-const MessageManager = require('./message_manager');
+const Logger = require('../shared/logger');
+const Helper = require('../shared/helper');
+const MessageManager = require('../shared/message_manager');
 const QueueManager = require('./queue_manager');
 const SocketManager = require('./socket_manager')
 const StorageManager = require('./storage_manager');
@@ -86,13 +86,14 @@ module.exports = class Server {
     }
 
     handle_listening() {
-
         this.logger.info('Listening for connections...');
     }
 
     handle_connection(socket) {
-        if (!this.ready)
+        if (!this.ready) {
+            socket.destroy();
             return false;
+        }
 
         if (this.options.logging)
             this.logger.info('Client connected %s', socket.remoteAddress);
@@ -223,12 +224,41 @@ module.exports = class Server {
     async handle_request(chunk, decoded, socket) {
 
         const send_error_packet = (status, message) => {
-            socket.write(this.message_manager.create_response_packet(decoded.request.type, status, JSON.stringify({
+            let payload = JSON.stringify({
                 error: { message }
-            })));
+            });
+
+            socket.write(this.message_manager.create_response_packet(decoded.request.type, status, payload));
         };
 
         switch (decoded.request.type) {
+            case MessageManager.types.AUTH_CHALLENGE: {
+                if (typeof decoded.request.payload != 'undefined') {
+                    try {
+                        const params = JSON.parse(decoded.request.payload);
+
+                        if (typeof params.username == 'undefined')
+                            return send_error_packet(400, `You must provide a username.`);
+
+                        if (typeof params.password == 'undefined')
+                            return send_error_packet(400, `You must provide a password.`);
+
+                        const packet = this.message_manager.create_response_packet(decoded.request.type, 200, JSON.stringify({
+                            auth: {
+                                status: 'LOGGED'
+                            }
+                        }));
+
+                        socket.write(packet);
+                        await Helper.sleep(this.options.publish_interval);
+                        this.logger.info('User authentified: %s', params.username);
+                    }
+                    catch (error) {
+                        console.log(error);
+                    }
+                    break;
+                }
+            }
             case MessageManager.types.CREATE_QUEUE: {
                 if (typeof decoded.request.payload != 'undefined') {
                     try {
