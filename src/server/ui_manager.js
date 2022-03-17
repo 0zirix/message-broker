@@ -2,7 +2,7 @@ const path = require('path');
 const http = require('http');
 const express = require('express');
 const SocketIo = require("socket.io");
-const SocketManager = require('./socket_manager');
+const SocketManager = require('./managers/socket_manager');
 
 module.exports = class UIManager {
     constructor(broker, options = {}) {

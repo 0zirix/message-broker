@@ -1,6 +1,6 @@
-const Queue = require('./queue');
-const Message = require('../shared/message');
-const Helper = require('../shared/helper');
+const Queue = require('../queue');
+const Message = require('../../shared/message');
+const Helper = require('../../shared/helper');
 
 module.exports = class QueueManager {
     constructor(storage_manager) {

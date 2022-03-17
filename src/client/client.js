@@ -72,7 +72,8 @@ module.exports = class Client extends EventEmitter {
                                 const response = JSON.parse(packet.response.payload);
 
                                 if (packet.response.type === MessageManager.types.AUTH_CHALLENGE) {
-                                    console.log(response)
+                                    if (response.auth.status === 'LOGGED')
+                                        this.emit('ready');
                                 } else {
                                     const callback_name = 'response_' + packet.response.type;
 
